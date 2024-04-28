@@ -1,14 +1,14 @@
-from tensorflow.keras import layers, models, regularizers
+from tensorflow.keras.applications import EfficientNetB0
+from tensorflow.keras.layers import GlobalAveragePooling2D, Dense
+from tensorflow.keras.models import Model
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.callbacks import EarlyStopping, LearningRateScheduler
 from tensorflow.keras.optimizers import Adam
-import matplotlib.pyplot as plt
+from tensorflow.keras.callbacks import EarlyStopping, LearningRateScheduler, Callback
 from tensorflow.keras.metrics import Precision, Recall, AUC
-from tensorflow.keras.callbacks import Callback
+import matplotlib.pyplot as plt
 import os
 
-model_path = 'my_model.keras'
-
+model_path = 'efficientnet_model.h5'
 if os.path.exists(model_path):
     os.remove(model_path)
     print(f"Deleted existing model file: {model_path}")
@@ -24,7 +24,7 @@ class MetricsCallback(Callback):
     def on_epoch_end(self, epoch, logs=None):
         precision = logs['precision']
         recall = logs['recall']
-        f1_score = 2 * (precision * recall) / (precision + recall + 1e-7)  # Avoid division by zero
+        f1_score = 2 * (precision * recall) / (precision + recall + 1e-7)
 
         if f1_score > self.best_f1:
             self.best_f1 = f1_score
@@ -85,68 +85,52 @@ validation_generator = val_datagen.flow_from_directory(
     shuffle=True
 )
 
-model = models.Sequential([
-    layers.Input(shape=(150, 150, 3)),
-    layers.Conv2D(16, (3, 3), activation='relu'),
-    layers.MaxPooling2D((2, 2)),
-    layers.Conv2D(32, (3, 3), activation='relu'),
-    layers.MaxPooling2D((2, 2)),
-    layers.Flatten(),
-    layers.Dropout(0.5),
-    layers.Dense(256, activation='relu', kernel_regularizer=regularizers.l2(0.001)),
-    layers.Dense(1, activation='sigmoid')
-])
+base_model = EfficientNetB0(weights='imagenet', include_top=False, input_shape=(150, 150, 3))
 
+# Freeze the layers of the base model
+for layer in base_model.layers:
+    layer.trainable = False
 
-initial_learning_rate = 1e-4
-model.compile(
-    optimizer=Adam(learning_rate=initial_learning_rate),
-    loss='binary_crossentropy',
-    metrics=['accuracy', Precision(), Recall(), AUC(name='auc')]
-)
+# Add new layers on top of EfficientNet
+x = base_model.output
+x = GlobalAveragePooling2D()(x)
+x = Dense(256, activation='relu')(x)
+x = Dense(1, activation='sigmoid')(x)
 
-early_stopping = EarlyStopping(monitor='val_loss', patience=10, verbose=1, restore_best_weights=True)
-lr_schedule = LearningRateScheduler(adjusted_scheduler)
+# This is the new model
+model = Model(inputs=base_model.input, outputs=x)
+
+model.compile(optimizer=Adam(learning_rate=1e-4), loss='binary_crossentropy',
+              metrics=['accuracy', Precision(), Recall(), AUC(name='auc')])
+
+early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+lr_scheduler = LearningRateScheduler(adjusted_scheduler)
 metrics_callback = MetricsCallback()
 
+# Fit the model
 history = model.fit(
     train_generator,
     steps_per_epoch=train_generator.samples // train_generator.batch_size,
     epochs=15,
     validation_data=validation_generator,
     validation_steps=validation_generator.samples // validation_generator.batch_size,
-    shuffle=True,
-    callbacks=[early_stopping, lr_schedule, metrics_callback]  # Add the f1_score_callback to the list
+    callbacks=[early_stopping, lr_scheduler, metrics_callback]
 )
 
+# Save the model
+model.save(model_path)
 
-model.save('my_model.keras')
 
-plt.plot(history.history['accuracy'])
-plt.plot(history.history['val_accuracy'])
-plt.title('Model accuracy')
-plt.ylabel('Accuracy')
-plt.xlabel('Epoch')
-plt.legend(['Train', 'Validation'], loc='upper left')
-plt.savefig('accuracy_plot.png')
+def plot_metric(history, metric, title, ylabel):
+    plt.plot(history.history[metric])
+    plt.plot(history.history[f'val_{metric}'])
+    plt.title(title)
+    plt.ylabel(ylabel)
+    plt.xlabel('Epoch')
+    plt.legend(['Train', 'Validation'], loc='upper left')
+    plt.savefig(f'{metric}_plot.png')
+    plt.clf()
 
-plt.clf()
-
-plt.plot(history.history['loss'])
-plt.plot(history.history['val_loss'])
-plt.title('Model loss')
-plt.ylabel('Loss')
-plt.xlabel('Epoch')
-plt.legend(['Train', 'Validation'], loc='upper left')
-plt.savefig('loss_plot.png')
-
-plt.clf()
-
-plt.plot(history.history['auc'], label='Train AUC')
-plt.plot(history.history['val_auc'], label='Validation AUC')
-plt.title('Model AUC')
-plt.ylabel('AUC')
-plt.xlabel('Epoch')
-plt.legend(loc='lower right')
-plt.savefig('auc_plot.png')
-plt.clf()
+plot_metric(history, 'accuracy', 'Model Accuracy', 'Accuracy')
+plot_metric(history, 'loss', 'Model Loss', 'Loss')
+plot_metric(history, 'auc', 'Model AUC', 'AUC')
