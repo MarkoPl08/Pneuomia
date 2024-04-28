@@ -24,7 +24,7 @@ class MetricsCallback(Callback):
     def on_epoch_end(self, epoch, logs=None):
         precision = logs['precision']
         recall = logs['recall']
-        f1_score = 2 * (precision * recall) / (precision + recall + 1e-7)  # Avoid division by zero
+        f1_score = 2 * (precision * recall) / (precision + recall + 1e-7)
 
         if f1_score > self.best_f1:
             self.best_f1 = f1_score
@@ -116,37 +116,23 @@ history = model.fit(
     validation_data=validation_generator,
     validation_steps=validation_generator.samples // validation_generator.batch_size,
     shuffle=True,
-    callbacks=[early_stopping, lr_schedule, metrics_callback]  # Add the f1_score_callback to the list
+    callbacks=[early_stopping, lr_schedule, metrics_callback]
 )
 
 
 model.save('my_model.keras')
 
-plt.plot(history.history['accuracy'])
-plt.plot(history.history['val_accuracy'])
-plt.title('Model accuracy')
-plt.ylabel('Accuracy')
-plt.xlabel('Epoch')
-plt.legend(['Train', 'Validation'], loc='upper left')
-plt.savefig('accuracy_plot.png')
 
-plt.clf()
+def plot_metric(history, metric, title, ylabel):
+    plt.plot(history.history[metric])
+    plt.plot(history.history[f'val_{metric}'])
+    plt.title(title)
+    plt.ylabel(ylabel)
+    plt.xlabel('Epoch')
+    plt.legend(['Train', 'Validation'], loc='upper left')
+    plt.savefig(f'{metric}_plot.png')
+    plt.clf()
 
-plt.plot(history.history['loss'])
-plt.plot(history.history['val_loss'])
-plt.title('Model loss')
-plt.ylabel('Loss')
-plt.xlabel('Epoch')
-plt.legend(['Train', 'Validation'], loc='upper left')
-plt.savefig('loss_plot.png')
-
-plt.clf()
-
-plt.plot(history.history['auc'], label='Train AUC')
-plt.plot(history.history['val_auc'], label='Validation AUC')
-plt.title('Model AUC')
-plt.ylabel('AUC')
-plt.xlabel('Epoch')
-plt.legend(loc='lower right')
-plt.savefig('auc_plot.png')
-plt.clf()
+plot_metric(history, 'accuracy', 'Model Accuracy', 'Accuracy')
+plot_metric(history, 'loss', 'Model Loss', 'Loss')
+plot_metric(history, 'auc', 'Model AUC', 'AUC')
