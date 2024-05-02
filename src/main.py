@@ -5,6 +5,7 @@ from tensorflow.keras.optimizers import Adam
 import matplotlib.pyplot as plt
 from tensorflow.keras.metrics import Precision, Recall, AUC
 from tensorflow.keras.callbacks import Callback
+from tensorflow.keras.models import load_model
 import os
 
 model_path = 'my_model.keras'
@@ -85,6 +86,16 @@ validation_generator = val_datagen.flow_from_directory(
     shuffle=True
 )
 
+test_datagen = ImageDataGenerator(rescale=1./255)
+
+test_generator = test_datagen.flow_from_directory(
+    'data/test',
+    target_size=(150, 150),
+    batch_size=64,
+    class_mode='binary',
+    shuffle=False
+)
+
 model = models.Sequential([
     layers.Input(shape=(150, 150, 3)),
     layers.Conv2D(16, (3, 3), activation='relu'),
@@ -119,9 +130,19 @@ history = model.fit(
     callbacks=[early_stopping, lr_schedule, metrics_callback]
 )
 
-
 model.save('my_model.keras')
+model = load_model('my_model.keras')
 
+test_loss, test_accuracy, test_precision, test_recall, test_auc = model.evaluate(
+    test_generator,
+    steps=len(test_generator)
+)
+
+print(f"Test Loss: {test_loss}")
+print(f"Test Accuracy: {test_accuracy}")
+print(f"Test Precision: {test_precision}")
+print(f"Test Recall: {test_recall}")
+print(f"Test AUC: {test_auc}")
 
 def plot_metric(history, metric, title, ylabel):
     plt.plot(history.history[metric])
