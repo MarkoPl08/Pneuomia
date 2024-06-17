@@ -1,14 +1,12 @@
-from tensorflow.keras import layers, models, regularizers
+from matplotlib import pyplot as plt
+from tensorflow.keras import layers, models, regularizers, Input
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.callbacks import EarlyStopping, LearningRateScheduler
+from tensorflow.keras.callbacks import EarlyStopping, LearningRateScheduler, Callback
 from tensorflow.keras.optimizers import Adam
-import matplotlib.pyplot as plt
 from tensorflow.keras.metrics import Precision, Recall, AUC
-from tensorflow.keras.callbacks import Callback
-from tensorflow.keras.models import load_model
 import os
 
-model_path = 'my_model.keras'
+model_path = 'my_model_functional.keras'
 
 if os.path.exists(model_path):
     os.remove(model_path)
@@ -31,11 +29,9 @@ class MetricsCallback(Callback):
             self.best_f1 = f1_score
             self.best_epoch = epoch
 
-        # Track best accuracy
         if logs['accuracy'] > self.best_accuracy:
             self.best_accuracy = logs['accuracy']
 
-        # Track best loss
         if logs['loss'] < self.best_loss:
             self.best_loss = logs['loss']
 
@@ -58,8 +54,8 @@ def adjusted_scheduler(epoch, lr):
 
 
 train_datagen = ImageDataGenerator(
-    rescale=1./255,
-    rotation_range=20,
+    rescale=1. / 255,
+    rotation_range=0,
     width_shift_range=0.2,
     height_shift_range=0.2,
     shear_range=0.2,
@@ -69,6 +65,7 @@ train_datagen = ImageDataGenerator(
 )
 
 val_datagen = ImageDataGenerator(rescale=1. / 255)
+test_datagen = ImageDataGenerator(rescale=1. / 255)
 
 train_generator = train_datagen.flow_from_directory(
     'data/train',
@@ -86,8 +83,6 @@ validation_generator = val_datagen.flow_from_directory(
     shuffle=True
 )
 
-test_datagen = ImageDataGenerator(rescale=1./255)
-
 test_generator = test_datagen.flow_from_directory(
     'data/test',
     target_size=(150, 150),
@@ -96,18 +91,21 @@ test_generator = test_datagen.flow_from_directory(
     shuffle=False
 )
 
-model = models.Sequential([
-    layers.Input(shape=(150, 150, 3)),
-    layers.Conv2D(16, (3, 3), activation='relu'),
-    layers.MaxPooling2D((2, 2)),
-    layers.Conv2D(32, (3, 3), activation='relu'),
-    layers.MaxPooling2D((2, 2)),
-    layers.Flatten(),
-    layers.Dropout(0.5),
-    layers.Dense(256, activation='relu', kernel_regularizer=regularizers.l2(0.001)),
-    layers.Dense(1, activation='sigmoid')
-])
+inputs = Input(shape=(150, 150, 3))
+x = layers.Conv2D(32, (3, 3), activation='relu')(inputs)
+x = layers.MaxPooling2D((2, 2))(x)
+x = layers.Conv2D(64, (3, 3), activation='relu')(x)
+x = layers.MaxPooling2D((2, 2))(x)
+x = layers.Conv2D(128, (3, 3), activation='relu')(x)
+x = layers.MaxPooling2D((2, 2))(x)
+x = layers.Conv2D(128, (3, 3), activation='relu')(x)
+x = layers.MaxPooling2D((2, 2))(x)
+x = layers.Flatten()(x)
+x = layers.Dropout(0.5)(x)
+x = layers.Dense(512, activation='relu', kernel_regularizer=regularizers.l2(0.001))(x)
+outputs = layers.Dense(1, activation='sigmoid')(x)
 
+model = models.Model(inputs, outputs)
 
 initial_learning_rate = 1e-4
 model.compile(
@@ -130,8 +128,8 @@ history = model.fit(
     callbacks=[early_stopping, lr_schedule, metrics_callback]
 )
 
-model.save('my_model.keras')
-model = load_model('my_model.keras')
+model.save(model_path)
+print(f"Model saved to {model_path}")
 
 test_loss, test_accuracy, test_precision, test_recall, test_auc = model.evaluate(
     test_generator,
@@ -144,6 +142,7 @@ print(f"Test Precision: {test_precision}")
 print(f"Test Recall: {test_recall}")
 print(f"Test AUC: {test_auc}")
 
+
 def plot_metric(history, metric, title, ylabel):
     plt.plot(history.history[metric])
     plt.plot(history.history[f'val_{metric}'])
@@ -153,6 +152,7 @@ def plot_metric(history, metric, title, ylabel):
     plt.legend(['Train', 'Validation'], loc='upper left')
     plt.savefig(f'{metric}_plot.png')
     plt.clf()
+
 
 plot_metric(history, 'accuracy', 'Model Accuracy', 'Accuracy')
 plot_metric(history, 'loss', 'Model Loss', 'Loss')
