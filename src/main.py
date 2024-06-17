@@ -1,9 +1,11 @@
-from matplotlib import pyplot as plt
+from tensorflow.keras.utils import plot_model
+import matplotlib.pyplot as plt
 from tensorflow.keras import layers, models, regularizers, Input
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.callbacks import EarlyStopping, LearningRateScheduler, Callback
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.metrics import Precision, Recall, AUC
+from IPython.display import Image
 import os
 
 model_path = 'my_model_functional.keras'
@@ -13,6 +15,7 @@ if os.path.exists(model_path):
     print(f"Deleted existing model file: {model_path}")
 
 
+# Define the custom callback class
 class MetricsCallback(Callback):
     def on_train_begin(self, logs=None):
         self.best_f1 = -1
@@ -44,6 +47,7 @@ class MetricsCallback(Callback):
         print(f"Best loss {self.best_loss:.4f} was achieved at epoch {self.best_epoch + 1}")
 
 
+# Define the learning rate scheduler
 def adjusted_scheduler(epoch, lr):
     if epoch < 5:
         return lr
@@ -53,6 +57,7 @@ def adjusted_scheduler(epoch, lr):
         return lr * 0.02
 
 
+# Data generators
 train_datagen = ImageDataGenerator(
     rescale=1. / 255,
     rotation_range=0,
@@ -91,6 +96,7 @@ test_generator = test_datagen.flow_from_directory(
     shuffle=False
 )
 
+# Model definition
 inputs = Input(shape=(150, 150, 3))
 x = layers.Conv2D(32, (3, 3), activation='relu')(inputs)
 x = layers.MaxPooling2D((2, 2))(x)
@@ -157,3 +163,7 @@ def plot_metric(history, metric, title, ylabel):
 plot_metric(history, 'accuracy', 'Model Accuracy', 'Accuracy')
 plot_metric(history, 'loss', 'Model Loss', 'Loss')
 plot_metric(history, 'auc', 'Model AUC', 'AUC')
+
+plot_model(model, to_file='model_architecture.png', show_shapes=True, show_layer_names=True)
+
+Image('model_architecture.png')
